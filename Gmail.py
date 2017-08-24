@@ -16,13 +16,12 @@ from email.mime.text import MIMEText
 import mimetypes
 import os
 import datetime
-import sheets_sample
-
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
+#
+# try:
+#     import argparse
+#     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+# except ImportError:
+#     flags = None
 
 class GamilAPI(object):
     def __init__(self):
@@ -193,17 +192,22 @@ class GamilAPI(object):
                 weekly_report.append((d, False))
         return weekly_report
 
+    def create_draft(self, message_body, user_id='me'):
+        message = {'message': message_body}
+        draft = self.service.users().drafts().create(userId=user_id, body=message).execute()
+        return draft
 
-if __name__ == '__main__':
-    gmail = GamilAPI()
-    # gmail.count_daily_with_email('yunyi@nonda.us')
-    subject = '【提醒】新人周得分填写'
-    message_text = 'Hi Managers，<br>请尽早和新人进行上周目标及结果的1-1沟通，并于今天5:00PM前更新新人上周的得分。<br>' \
-                    '<div><a href="https://drive.google.com/drive/u/1/folders/0B2TOYKCbyuaRLWFnZUw2RVV3OXc" target="_blank"></a></div>'
-    message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
-    gmail.send_message(message)
-
-
+# if __name__ == '__main__':
+#     gmail = GamilAPI()
+#     # gmail.count_daily_with_email('yunyi@nonda.us')
+#     subject = '【提醒】新人周得分填写'
+#     message_text = 'Hi Managers，<br>请尽早和新人进行上周目标及结果的1-1沟通，并于今天5:00PM前更新新人上周的得分。<br>' \
+#                    '<div class="gmail_chip gmail_drive_chip" style="width:396px;height:18px;max-height:18px;background-color:rgb(245,245,245);padding:5px;color:rgb(34,34,34);font-family:arial;font-style:normal;font-weight:bold;font-size:13px;border:1px solid rgb(221,221,221);line-height:1">' \
+#                    '<a href="' + 'https://drive.google.com/drive/u/1/folders/0B2TOYKCbyuaRLWFnZUw2RVV3OXc' + '" style="display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;padding:1px 0px;border:none;width:100%" target="_blank"><img style="vertical-align:bottom;border:none" src="https://ssl.gstatic.com/docs/doclist/images/icon_11_spreadsheet_list.png" class="CToWUd">&nbsp;<span dir="ltr" style="color:rgb(17,85,204);text-decoration:none;vertical-align:bottom">' + '试用期目标' + '</span></a></div>'
+#     message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
+#     gmail.send_message(message)
+#
+#
 
 
 

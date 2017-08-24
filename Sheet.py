@@ -8,14 +8,14 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-import gmail_sample
+# import Gmail
 
-
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
+#
+# try:
+#     import argparse
+#     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+# except ImportError:
+#     flags = None  ## why import this doc , will get mistake
 
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/sheets.googleapis.com-python-quickstart.json
@@ -123,8 +123,6 @@ class SheetAPI(object):
         print(weekly_values)
         return weekly_values, report_lack_list, score_lack_list
 
-
-
     def _list_value_with_range_sheetId(self, range_name, spreadsheetId, majorDimension='ROWS'):
         values = []
         result = self.service.spreadsheets().values().get(spreadsheetId=spreadsheetId,
@@ -147,7 +145,7 @@ class SheetAPI(object):
         body = {
             'values': [sheet_title],
         }
-        return self._write_weekly_values(range_name, body=body)
+        return [sheet_title]
 
     def _write_weekly_values(self, range_name, body):
         # range_name = '工作表1!A2:K'
@@ -178,75 +176,68 @@ class SheetAPI(object):
                     break
         return score
 
+    def make_table_html(self, weekly_values):
+        result = '<table cellspacing="0" cellpadding="0" dir="ltr" border="1" style="table-layout:fixed;font-size:13px;font-family:arial,sans,sans-serif;border-collapse:collapse;border:none">'
+        result += '<colgroup><col width="209"><col width="209"><col width="80"><col width="86"><col width="86"><col width="93"><col width="197"><col width="197"><col width="93"></colgroup>'
+        result += '<tbody>'
+        for value in weekly_values:
+            result += '<tr style="height:21px">'
+            for i in value:
+                if i:
+                    result += '<td style="padding:2px 3px;background-color:rgb(207, 226, 243);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
+                else:
+                    result += '<td style="padding:2px 3px;background-color:rgb(255, 252, 51);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
+                result += '</td>'
+            result += "</tr>"
+        result += '</tbody>'
+        result += "</table>"
 
+        return result
 
-def make_table_html(weekly_values):
-    result = '<table cellspacing="0" cellpadding="0" dir="ltr" border="1" style="table-layout:fixed;font-size:13px;font-family:arial,sans,sans-serif;border-collapse:collapse;border:none">'
-    result += '<colgroup><col width="209"><col width="209"><col width="80"><col width="86"><col width="86"><col width="93"><col width="197"><col width="197"><col width="93"></colgroup>'
-    result += '<tbody>'
-    for value in weekly_values:
-        result += '<tr style="height:21px">'
-        for i in value:
-            if i:
-                result += '<td style="padding:2px 3px;background-color:rgb(207, 226, 243);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
+    def make_message_text(self, report_lack_list, score_lack_list, html):
+        text = "Hi all，<br>以下是上周新人的daily report和weekly score情况：<br><br>" \
+               "规则：<br>- Daily report以大家每天抄送HR的邮件为准，未收到daily report标黄；" \
+               "<br>- 【新人】Daily report未及时发送者，每遗漏一次请在nonda微信群内发50元红包；" \
+               "<br>- Weekly score以各位试用期目标中每位的Mgr评分为准，未评分标黄；" \
+               "<br>- 【Mgr】Weekly score未及时评定者，每遗漏一次请在nonda微信群内发100元红包。" \
+               "<br>本周情况：<br>"
+        report_lacked = False
+        score_lacked = False
+        for r in report_lack_list:
+            if r[1] == 0:
+                continue
             else:
-                result += '<td style="padding:2px 3px;background-color:rgb(255, 252, 51);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
-            result += '</td>'
-        result += "</tr>"
-    result += '</tbody>'
-    result += "</table>"
-
-    return result
-
-
-def make_message_text(report_lack_list, score_lack_list, html):
-    text = "Hi all，<br>以下是上周新人的daily report和weekly score情况：<br><br>" \
-           "规则：<br>- Daily report以大家每天抄送HR的邮件为准，未收到daily report标黄；" \
-           "<br>- 【新人】Daily report未及时发送者，每遗漏一次请在nonda微信群内发50元红包；" \
-           "<br>- Weekly score以各位试用期目标中每位的Mgr评分为准，未评分标黄；" \
-           "<br>- 【Mgr】Weekly score未及时评定者，每遗漏一次请在nonda微信群内发100元红包。" \
-           "<br>本周情况：<br>"
-    report_lacked = False
-    score_lacked = False
-    for r in report_lack_list:
-        if r[1] == 0:
-            continue
-        else:
-            report_lacked = True
-            text += '<br>- 【新人】漏写Daily Report：%s：%s次' % (r)
-    for s in score_lack_list:
-        if s[1] == 0:
-            continue
-        else:
-            score_lacked = True
-            text += "<br>- 【Mgr】漏打分：%s：%s次" % (s)
-    if not report_lacked and not score_lacked:
-        text += '<br>- 没有人有遗漏'
-    elif not report_lacked:
-        text += '<br>- 【新人】没有人有遗漏'
-    elif not score_lacked:
-        text += '<br>- 【Mgr】没有人有遗漏'
-    text += html
-    return text
+                report_lacked = True
+                text += '<br>- 【新人】漏写Daily Report：%s：%s次' % (r)
+        for s in score_lack_list:
+            if s[1] == 0:
+                continue
+            else:
+                score_lacked = True
+                text += "<br>- 【Mgr】漏打分：%s：%s次" % (s)
+        if not report_lacked and not score_lacked:
+            text += '<br>- 没有人有遗漏'
+        elif not report_lacked:
+            text += '<br>- 【新人】没有人有遗漏'
+        elif not score_lacked:
+            text += '<br>- 【Mgr】没有人有遗漏'
+        text += html
+        return text
 
 
-if __name__ == '__main__':
-    gmail = gmail_sample.GamilAPI()
-    match_date = gmail.get_match_date()
-    sheet = SheetAPI(match_date)
-    weekly_values, report_lack_list, score_lack_list = sheet.get_weekly_values_with_gmail(gmail)
-    sheet.update_weekly_report(weekly_values)
-    sheet_title = sheet.update_sheet_title(match_date)
-    subject = "New nondar Daily Report & Weekly Score Update"
-
-
-    title_html = make_table_html(sheet_title)
-    body_html = make_table_html(weekly_values)
-    html = title_html + body_html
-
-    message_text = make_message_text(report_lack_list, score_lack_list, html)
-    message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
-    gmail.send_message(message)
+# if __name__ == '__main__':
+#     gmail = Gmail.GamilAPI()
+#     match_date = gmail.get_match_date()
+#     sheet = SheetAPI(match_date)
+#     weekly_values, report_lack_list, score_lack_list = sheet.get_weekly_values_with_gmail(gmail)
+#     sheet.update_weekly_report(weekly_values)
+#     sheet_title = sheet.update_sheet_title(match_date)
+#     subject = "New nondar Daily Report & Weekly Score Update"
+#     sheet_title.extend(weekly_values)
+#     html = sheet.make_table_html(sheet_title)
+#     message_text = sheet.make_message_text(report_lack_list, score_lack_list, html)
+#     message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
+#     gmail.create_draft(message)
 
 
 
