@@ -16,12 +16,18 @@ from email.mime.text import MIMEText
 import mimetypes
 import os
 import datetime
-#
+
+
+import settings
+import logging
+
+# if retrive credentials, don't note these codes.
 # try:
 #     import argparse
 #     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
 # except ImportError:
 #     flags = None
+
 
 class GamilAPI(object):
     def __init__(self):
@@ -35,6 +41,9 @@ class GamilAPI(object):
         self._application_name = 'Gmail API Python Quickstart'
         self.service = self._get_service()
         self.label_id = self._get_label_id()
+
+        logging.basicConfig(filename='AutoScripts.log', level='DEBUG')
+        self.logger = logging.getLogger(__name__)
 
     def _get_credentials(self):
         home_dir = os.path.expanduser('~')
@@ -62,28 +71,12 @@ class GamilAPI(object):
         service = discovery.build('gmail', 'v1', http=http)
         return service
 
-    # def main():
-    #     # threads = list_threads_with_label_query(service, label_ids=label_id, query='before:2017/09/30 after:2017/08/01')
-    #     # subjects = list_subject(service, threads)
-    #     # print(subjects)
-    #     message = create_message_with_attachment('xiaoxi@nonda.us', 'ganbinwen@nonda.me')
-    #     print(message)
-    #     send_message(service, message)
-    #     return
-    #     values = sheets_sample.list_value()
-    #     print(len(values))
-    #     for v in values:
-    #         email = v[1]
-    #         if email:
-    #             print(email)
-    #             _count_daily_report(service, email)
-
-    def _get_label_id(self, labelname='Daily Report'):
+    def _get_label_id(self):
         labels = self.service.users().labels().list(userId='me').execute()
         label_id = ''  # if haven't got label_id , it's mean all labels.
         if labels.get('labels'):
             for label in labels['labels']:
-                if labelname in label['name']:
+                if settings.LABEL_NAME in label['name']:
                     label_id = label['id']
                     break
         return label_id
@@ -119,7 +112,6 @@ class GamilAPI(object):
                     break
         return subjects
 
-
     def create_message(self, sender, to, subject, text):
         message_text = text
         message = MIMEText(message_text, 'html')
@@ -133,17 +125,17 @@ class GamilAPI(object):
     def send_message(self, message, user_id='me'):
         message = (self.service.users().messages().send(userId=user_id,body=message)
                .execute())
-        print('Message Id: %s' % message['id'])
+        self.logger.debug('Reminding email send successfully, Message Id: %s' % message['id'])
         return message
 
     def _get_search_date(self):
         now = datetime.datetime.now()
-        interval_days = 10
-        last_monday = now - datetime.timedelta(days=interval_days)
-        tomorrow = now - datetime.timedelta(days=2)  # todo Remember to update these settings
+        interval_days = 4
+        last_monday = now - datetime.timedelta(days=int(interval_days))
+        tomorrow = now + datetime.timedelta(days=1)
         if last_monday.weekday() == 0:  # 0 is Monday
             return last_monday, tomorrow
-        print("Today is not Monday, May be have some errors.")
+        self.logger.error("Today is not Monday, if you persist in starting script, you must update settings.py")
 
     def get_match_date(self):
         last_monday, tomorrow = self._get_search_date()
@@ -158,10 +150,10 @@ class GamilAPI(object):
         match_date = [lambda_date(x) for x in match_days]
         return match_date
 
-    def _handle_query_with_date(self , email):
+    def _handle_query_with_date(self, email):
         last_monday, tomorrow = self._get_search_date()
-        strf_time = '%Y/%m/%d'
         # 'before:2017/09/30 after:2017/08/01'
+        strf_time = '%Y/%m/%d'
         after_date = last_monday.strftime(strf_time)
         before_date = tomorrow.strftime(strf_time)
         filter_after = 'after:%s' % after_date
@@ -177,9 +169,8 @@ class GamilAPI(object):
         subjects = self.list_subject(threads)
         all_subject = ''.join(subjects)
         all_subject = re.sub('[\D]','/',all_subject)  # only reserve digit
-        re_date = re.compile(r'\d{0,4}/?(\d{1,2}/\d{1,2})')
+        re_date = re.compile(settings.RE_DATE_RULE)
         result = re_date.findall(all_subject)
-        print(all_subject, result)
         weekly_report = []
         for d in match_date:
             find = False
@@ -195,19 +186,20 @@ class GamilAPI(object):
     def create_draft(self, message_body, user_id='me'):
         message = {'message': message_body}
         draft = self.service.users().drafts().create(userId=user_id, body=message).execute()
+        if draft:
+            self.logger.debug('Draft has been created, please make a check.')
         return draft
 
-# if __name__ == '__main__':
-#     gmail = GamilAPI()
-#     # gmail.count_daily_with_email('yunyi@nonda.us')
-#     subject = '【提醒】新人周得分填写'
-#     message_text = 'Hi Managers，<br>请尽早和新人进行上周目标及结果的1-1沟通，并于今天5:00PM前更新新人上周的得分。<br>' \
-#                    '<div class="gmail_chip gmail_drive_chip" style="width:396px;height:18px;max-height:18px;background-color:rgb(245,245,245);padding:5px;color:rgb(34,34,34);font-family:arial;font-style:normal;font-weight:bold;font-size:13px;border:1px solid rgb(221,221,221);line-height:1">' \
-#                    '<a href="' + 'https://drive.google.com/drive/u/1/folders/0B2TOYKCbyuaRLWFnZUw2RVV3OXc' + '" style="display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;padding:1px 0px;border:none;width:100%" target="_blank"><img style="vertical-align:bottom;border:none" src="https://ssl.gstatic.com/docs/doclist/images/icon_11_spreadsheet_list.png" class="CToWUd">&nbsp;<span dir="ltr" style="color:rgb(17,85,204);text-decoration:none;vertical-align:bottom">' + '试用期目标' + '</span></a></div>'
-#     message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
-#     gmail.send_message(message)
-#
-#
+def main():
+    gmail = GamilAPI()
+    #     # gmail.count_daily_with_email('yunyi@nonda.us')
+    subject = settings.REMIND_SUBJECT
+    message_text = settings.REMIND_TEXT
+    message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me,binwengan@gmail.com', subject, message_text)
+    gmail.send_message(message)
+
+if __name__ == '__main__':
+    main()
 
 
 

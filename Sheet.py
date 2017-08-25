@@ -8,29 +8,33 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-# import Gmail
+import Gmail
+import settings
+import logging
 
-#
+
+# if retrive credentials, don't note these codes.
 # try:
 #     import argparse
 #     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
 # except ImportError:
-#     flags = None  ## why import this doc , will get mistake
+#     flags = None
 
-# If modifying these scopes, delete your previously saved credentials
-# at ~/.credentials/sheets.googleapis.com-python-quickstart.json
+
 class SheetAPI(object):
-    def __init__(self, match_date):
+    def __init__(self):
         self._scopes = [
             'https://www.googleapis.com/auth/drive',
             'https://www.googleapis.com/auth/drive.file',
             'https://www.googleapis.com/auth/spreadsheets',
         ]
-        self._client_secret_file = 'client_sheets_secret.json'
+        self._client_secret_file = 'client_sheet_secret.json'
         self._application_name = 'Google Sheets API Python Quickstart'
         self.service = self.get_service()
-        self.match_date = match_date
         self.values = self._get_commer_values()
+
+        logging.basicConfig(filename='AutoScripts.log', level='DEBUG')
+        self.logger = logging.getLogger(__name__)
 
     def _get_credentials(self):
         home_dir = os.path.expanduser('~')
@@ -62,8 +66,8 @@ class SheetAPI(object):
         return service
 
     def _get_commer_values(self):
-        values_range_name = '数据源!A2:K'
-        spreadsheetId = '1pI2PT9jKVgx13slYAvN85OquIaRTflMoZZbRFHsFZ_A'
+        values_range_name = settings.DATA_RANGE_NAME
+        spreadsheetId = settings.DATA_SHEET_ID
         values = self._list_value_with_range_sheetId(values_range_name, spreadsheetId)
         return values
 
@@ -79,11 +83,11 @@ class SheetAPI(object):
         mentor_name = 5
         entry_date = 6
         report_lack_list = []
-        score_lack_list  = []
+        score_lack_list = []
+        score_lack_dict = {}
         for value in values:
             daily_value = []
             report_lack_times = 0
-            score_lack_times = 0
             daily_value.append(value[new_name])
             daily_value.append(value[mgr_name])
             daily_value.append(value[mentor_name])
@@ -94,21 +98,23 @@ class SheetAPI(object):
                 score_date = weekly_count[0][0]
                 for d in weekly_count:
                     if d[1]:
-                        daily_count.append('✓')
+                        daily_count.append(settings.FINDED_MARK)
                     else:
-                        daily_count.append('')
+                        daily_count.append(settings.LACK_MARK)
                         report_lack_times += 1
             else:
                 continue
             re_sheetid = re.search('d/(.+)?/', value[target_address])
-
             if re_sheetid:
                 sheetid = re_sheetid.group(1)
-                target_range_name = 'C7'
-                score_range_name = 'A:G'
+                target_range_name = settings.TARGET_RANGE_NAME
+                score_range_name = settings.SCORE_RANGE_NAME
                 score = self.get_score(score_range_name, sheetid, score_date)
                 if not score:
-                    score_lack_times += 1
+                    if score_lack_dict.get(value[mgr_name]):
+                        score_lack_dict[value[mgr_name]] += 1
+                    else:
+                        score_lack_dict[value[mgr_name]] = 1
                 target = self._list_value_with_range_sheetId(target_range_name, sheetid)
                 if target:
                     target = target[0][0]
@@ -118,9 +124,10 @@ class SheetAPI(object):
                 daily_value.extend(daily_count)
                 daily_value.append(score)
             report_lack_list.append((value[new_name], report_lack_times))
-            score_lack_list.append((value[new_name], score_lack_times))
             weekly_values.append(daily_value)
-        print(weekly_values)
+        for mgr in score_lack_dict:
+            score_lack_list.append((mgr, score_lack_dict[mgr]))
+
         return weekly_values, report_lack_list, score_lack_list
 
     def _list_value_with_range_sheetId(self, range_name, spreadsheetId, majorDimension='ROWS'):
@@ -133,23 +140,23 @@ class SheetAPI(object):
         return values
 
     def update_sheet_title(self, match_date):
-        sheet_title = ["新人", "Mgr", "Mentor", "入职日期", "试用期目标"]
+        sheet_title = settings.RESULT_TITLE_1
         daily_report_title = []
-        week_score_title = '%s-%s\n周得分' % (match_date[0], match_date[-1])
+        week_score_title = settings.RESULT_TITLE_2[1] % (match_date[0], match_date[-1])
         for d in match_date:
-            daily_report_date = '%s\nDaily Report' % d
+            daily_report_date = settings.RESULT_TITLE_2[0] % d
             daily_report_title.append(daily_report_date)
         sheet_title.extend(daily_report_title)
         sheet_title.append(week_score_title)
-        range_name = '工作表1!A1:K1'
+        range_name = settings.RESULT_RANGE_NAME
         body = {
             'values': [sheet_title],
         }
+        self._write_weekly_values(range_name, body)
         return [sheet_title]
 
     def _write_weekly_values(self, range_name, body):
-        # range_name = '工作表1!A2:K'
-        spreadsheet_id = '1nPB6SMvRcXSD-4ELcKIqjp25G1csT7bcKXXvkGs64-A'
+        spreadsheet_id = settings.RESULT_SHEET_ID
         result = self.service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=range_name,
@@ -158,7 +165,7 @@ class SheetAPI(object):
         return result
 
     def update_weekly_report(self, weekly_values):
-        range_name = '工作表1!A2:K'
+        range_name = settings.RESULT_RANGE_NAME
         body = {
             'values': weekly_values
         }
@@ -166,14 +173,16 @@ class SheetAPI(object):
 
     def get_score(self, range_name, spreadsheetId, date):
         values = self._list_value_with_range_sheetId(range_name, spreadsheetId, 'COLUMNS')
-        score = ''
-        print(values)
         for v in values:
             for d in v:
                 if date in d:
                     index_date = v.index(d)
-                    score = v[index_date + 1]
-                    break
+                    try:
+                        score = v[index_date + 1]
+                    except IndexError:
+                        score = ''
+                    finally:
+                        break
         return score
 
     def make_table_html(self, weekly_values):
@@ -183,10 +192,7 @@ class SheetAPI(object):
         for value in weekly_values:
             result += '<tr style="height:21px">'
             for i in value:
-                if i:
-                    result += '<td style="padding:2px 3px;background-color:rgb(207, 226, 243);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
-                else:
-                    result += '<td style="padding:2px 3px;background-color:rgb(255, 252, 51);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
+                result += '<td style="padding:2px 3px;background-color:rgb(255, 255, 255);border-color:rgb(0,0,0);font-family:arial;font-weight:bold;word-wrap:break-word;vertical-align:top;text-align:center" rowspan="1" colspan="2">' + i + '</td>'
                 result += '</td>'
             result += "</tr>"
         result += '</tbody>'
@@ -195,12 +201,7 @@ class SheetAPI(object):
         return result
 
     def make_message_text(self, report_lack_list, score_lack_list, html):
-        text = "Hi all，<br>以下是上周新人的daily report和weekly score情况：<br><br>" \
-               "规则：<br>- Daily report以大家每天抄送HR的邮件为准，未收到daily report标黄；" \
-               "<br>- 【新人】Daily report未及时发送者，每遗漏一次请在nonda微信群内发50元红包；" \
-               "<br>- Weekly score以各位试用期目标中每位的Mgr评分为准，未评分标黄；" \
-               "<br>- 【Mgr】Weekly score未及时评定者，每遗漏一次请在nonda微信群内发100元红包。" \
-               "<br>本周情况：<br>"
+        text = settings.RESULT_TEXT
         report_lacked = False
         score_lacked = False
         for r in report_lack_list:
@@ -208,36 +209,39 @@ class SheetAPI(object):
                 continue
             else:
                 report_lacked = True
-                text += '<br>- 【新人】漏写Daily Report：%s：%s次' % (r)
+                text += settings.NEW_LACK % (r)
         for s in score_lack_list:
             if s[1] == 0:
                 continue
             else:
                 score_lacked = True
-                text += "<br>- 【Mgr】漏打分：%s：%s次" % (s)
+                text += settings.MGR_LACK % (s)
         if not report_lacked and not score_lacked:
-            text += '<br>- 没有人有遗漏'
+            text += settings.NO_ONE_LACK
         elif not report_lacked:
-            text += '<br>- 【新人】没有人有遗漏'
+            text += settings.NO_NEW_LACK
         elif not score_lacked:
-            text += '<br>- 【Mgr】没有人有遗漏'
+            text += settings.NO_MGR_LACK
         text += html
         return text
 
 
-# if __name__ == '__main__':
-#     gmail = Gmail.GamilAPI()
-#     match_date = gmail.get_match_date()
-#     sheet = SheetAPI(match_date)
-#     weekly_values, report_lack_list, score_lack_list = sheet.get_weekly_values_with_gmail(gmail)
-#     sheet.update_weekly_report(weekly_values)
-#     sheet_title = sheet.update_sheet_title(match_date)
-#     subject = "New nondar Daily Report & Weekly Score Update"
-#     sheet_title.extend(weekly_values)
-#     html = sheet.make_table_html(sheet_title)
-#     message_text = sheet.make_message_text(report_lack_list, score_lack_list, html)
-#     message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
-#     gmail.create_draft(message)
+def main():
+    gmail = Gmail.GamilAPI()
+    match_date = gmail.get_match_date()
+    sheet = SheetAPI()
+    weekly_values, report_lack_list, score_lack_list = sheet.get_weekly_values_with_gmail(gmail)
+    sheet.update_weekly_report(weekly_values)
+    sheet_title = sheet.update_sheet_title(match_date)
+    subject = "New nondar Daily Report & Weekly Score Update"
+    sheet_title.extend(weekly_values)
+    html = sheet.make_table_html(sheet_title)
+    message_text = sheet.make_message_text(report_lack_list, score_lack_list, html)
+    message = gmail.create_message('xiaoxi@nonda.us', 'ganbinwen@nonda.me', subject, message_text)
+    gmail.create_draft(message)
+
+if __name__ == '__main__':
+    main()
 
 
 
